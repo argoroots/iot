@@ -12,40 +12,45 @@ const int DC_PIN = 9;
 const int RST_PIN = 8;
 const int BUSY_PIN = 7;
 
-const int varGMT = 0;
-String oldMessage = "123";
+String oldMessage = "Start!";
 
 GxEPD2_BW<GxEPD2_266_BN, GxEPD2_266_BN::HEIGHT> display(GxEPD2_266_BN(CS_PIN, DC_PIN, RST_PIN, BUSY_PIN));
 
 void setup() {
+  //Initialize serial and wait for port to open
   Serial.begin(9600);
+  //while (!Serial);
   delay(2000);
+
   Serial.println("start setup");
-  
+
   alarm.begin();
-  
+
   writeScreen(oldMessage);
 
   Serial.println("end setup");
+  Serial.println();
 }
 
 void loop() {
   Serial.println("start loop");
-  
+
   String newMessage = getTimeString();
 
   if (oldMessage != newMessage) {
     Serial.println("update screen");
-    
-    writeScreen(newMessage);
+
+    writeScreen("");
     oldMessage = newMessage;
   }
 
   Serial.println("do nothing");
-  
+
   Serial.println("start sleep");
   LowPower.deepSleep(60000);
-  Serial.println("end sleep");
+  Serial.print("end ");
+  Serial.println("60s sleep");
+  Serial.println();
 }
 
 void writeScreen(String text)  {
@@ -106,7 +111,7 @@ String getDateString() {
 
 String getTimeString() {
   char result[16];
-  sprintf_P(result, PSTR("%02d:%02d"), alarm.getHours() + varGMT, alarm.getMinutes());
+  sprintf_P(result, PSTR("%02d:%02d"), alarm.getHours(), alarm.getMinutes());
 
   return result;
 }
