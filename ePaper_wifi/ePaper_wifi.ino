@@ -16,14 +16,10 @@ const int BUSY_PIN = 7;
 
 char ssid[] = SECRET_SSID;
 char pass[] = SECRET_PASS;
-int status = WL_IDLE_STATUS;              // the Wi-Fi radio's status
-int ledState = LOW;                       // ledState used to set the LED
-unsigned long previousMillisInfo = 0;     // will store last time Wi-Fi information was updated
-unsigned long previousMillisLED = 0;      // will store the last time LED was updated
-const int intervalInfo = 5000;            // interval at which to update the board information
+int status = WL_IDLE_STATUS;
 
 const int GMT = 3;
-String oldMessage = "123";
+String oldMessage = "Start!";
 
 GxEPD2_BW<GxEPD2_266_BN, GxEPD2_266_BN::HEIGHT> display(GxEPD2_266_BN(CS_PIN, DC_PIN, RST_PIN, BUSY_PIN));
 
