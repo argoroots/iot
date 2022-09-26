@@ -38,15 +38,16 @@ void loop() {
   setTime();
 
   const DynamicJsonDocument doc = apiGet();
-  const int minutes = 60 - alarm.getMinutes();
 
   wifiEnd();
 
-  Serial.println("update screen");
-
   writeScreen(doc);
 
-  Serial.print("start sleep for ");
+  delay(1000);
+
+  const int minutes = 60 - alarm.getMinutes();
+
+  Serial.print("sleep ");
   Serial.print(minutes);
   Serial.println(" minutes");
 
@@ -55,25 +56,23 @@ void loop() {
 
 void wifiConnect() {
   while (status != WL_CONNECTED) {
-    Serial.print("attempting to connect to network: ");
+    Serial.print("connecting to ");
     Serial.println(ssid);
 
     status = WiFi.begin(ssid, pass);
-    delay(500);
+    delay(300);
   }
 
-  Serial.println("you're connected to the network");
-  Serial.print("sSID: ");
+  Serial.print("ssid: ");
   Serial.println(WiFi.SSID());
   Serial.print("signal strength: ");
   Serial.println(WiFi.RSSI());
-  Serial.print("iP Address: ");
+  Serial.print("ip address: ");
   Serial.println(WiFi.localIP());
-  Serial.println();
 }
 
 void wifiEnd() {
-  Serial.print("disconnect from network: ");
+  Serial.print("disconnect from ");
   Serial.println(WiFi.SSID());
 
   WiFi.end();
@@ -85,32 +84,31 @@ void setTime() {
   unsigned long epoch = 0;
 
   while (epoch == 0) {
-    Serial.println("get time");
+    Serial.println("geting time");
     epoch = WiFi.getTime();
 
-    delay(1000);
+    delay(600);
   }
 
   unsigned long epochGMT = epoch + GMT * 60 * 60;
   alarm.setEpoch(epochGMT);
 
-  Serial.print("set time to: ");
+  Serial.print("set time to ");
   Serial.println(epochGMT);
 }
 
 DynamicJsonDocument apiGet() {
-  Serial.println("starting connection to server");
+  Serial.println("connect to api.roots.ee");
 
   DynamicJsonDocument doc(4096);
 
   if (client.connect("api.roots.ee", 443)) {
-    Serial.println("connected to server");
-
     client.println("GET /elekter HTTP/1.1");
     client.println("Host: api.roots.ee");
     client.println("Connection: close");
     client.println();
-    Serial.println("request sent");
+
+    Serial.println("request GET /elekter sent");
   }
 
   while (!client.available()) {
@@ -124,7 +122,6 @@ DynamicJsonDocument apiGet() {
     DeserializationError error = deserializeJson(doc, body);
 
     if (error) {
-      Serial.print("deserializeJson() failed: ");
       Serial.println(error.c_str());
       return doc;
     }
@@ -132,8 +129,7 @@ DynamicJsonDocument apiGet() {
 
 
   if (!client.connected()) {
-    Serial.println();
-    Serial.println("disconnecting from server.");
+    Serial.println("disconnect from api.roots.ee");
     client.stop();
   }
 
@@ -141,7 +137,8 @@ DynamicJsonDocument apiGet() {
 }
 
 void writeScreen(DynamicJsonDocument doc)  {
-  String text = "";
+  Serial.println("update screen");
+
   String dateStr = getDateString();
   String timeStr = getTimeString();
 
@@ -182,23 +179,13 @@ void writeScreen(DynamicJsonDocument doc)  {
       JsonArray row = doc[i];
 
       int hour = row[3];
-
-      char hourStr[5];
-
       float price = row[4];
       int priceRounded = round(price / 10);
-      String priceStr = String(priceRounded);
 
-      sprintf_P(hourStr, PSTR("%02d:00% 9d"), hour, priceRounded);
-
-      display.getTextBounds(priceStr, 0, 0, &pricePositionX, &pricePositionY, &priceWidth, &priceHeight);
-      uint16_t priceCursorX = display.width() - priceWidth - 3;
+      String hourStr = getPriceString(hour, priceRounded);
 
       display.setCursor(0, priceCursorY);
       display.print(hourStr);
-
-      // display.setCursor(priceCursorX, priceCursorY);
-      // display.print(priceStr);
 
       priceCursorY = priceCursorY + 20;
     }
@@ -221,10 +208,9 @@ String getTimeString() {
   return result;
 }
 
-String getPriceString(float price) {
-  String result;
-  result = String(price);
+String getPriceString(int hour, int price) {
+  char result[14];
+  sprintf_P(result, PSTR("%02d:00%.9d"), hour, price);
 
   return result;
 }
-
