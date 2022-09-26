@@ -1,13 +1,14 @@
-#include "arduino_secrets.h"
 #include <WiFiNINA.h>
 #include <RTCZero.h>
 #include <GxEPD2_BW.h>
 #include <ArduinoLowPower.h>
 #include <Adafruit_GFX.h>
-#include <Fonts/FreeSans9pt7b.h>
-#include <Fonts/FreeSansBold12pt7b.h>
+#include <Fonts/FreeMono9pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <ArduinoJson.h>
 
 RTCZero alarm;
+WiFiSSLClient client;
 
 const int CS_PIN = 10;
 const int DC_PIN = 9;
@@ -19,140 +20,142 @@ char pass[] = SECRET_PASS;
 int status = WL_IDLE_STATUS;
 
 const int GMT = 3;
-String oldMessage = "Start!";
 
 GxEPD2_BW<GxEPD2_266_BN, GxEPD2_266_BN::HEIGHT> display(GxEPD2_266_BN(CS_PIN, DC_PIN, RST_PIN, BUSY_PIN));
 
 void setup() {
-  //Initialize serial and wait for port to open
   Serial.begin(9600);
-  //while (!Serial);
   delay(2000);
 
-  Serial.println("start setup");
-
   alarm.begin();
-
-  writeScreen(oldMessage);
-
-  Serial.println("end setup");
-  Serial.println();
+  WiFi.lowPowerMode();
 }
 
 void loop() {
   Serial.println("start loop");
 
-  String newMessage = getTimeString();
+  wifiConnect();
+  setTime();
 
-  if (oldMessage != newMessage) {
-    wifiConnect();
-    setTime();
+  const DynamicJsonDocument doc = apiGet();
+  const int minutes = 60 - alarm.getMinutes();
 
-    delay(3000);
+  wifiEnd();
 
-    wifiEnd();
+  Serial.println("update screen");
 
-    Serial.println("update screen");
+  writeScreen(doc);
 
-    writeScreen("");
-    oldMessage = newMessage;
-  }
+  Serial.print("start sleep for ");
+  Serial.print(minutes);
+  Serial.println(" minutes");
 
-  Serial.println("do nothing");
-
-  Serial.println("start sleep");
-  LowPower.deepSleep(60000);
-  Serial.print("end ");
-  Serial.println("60s sleep");
-  Serial.println();
+  LowPower.deepSleep(minutes * 60000);
 }
 
 void wifiConnect() {
-  // attempt to connect to Wi-Fi network
   while (status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to network: ");
+    Serial.print("attempting to connect to network: ");
     Serial.println(ssid);
 
-    // Connect to WPA/WPA2 network
     status = WiFi.begin(ssid, pass);
-
-    // wait second before retry
-    delay(1000);
+    delay(500);
   }
 
-  Serial.println("You're connected to the network");
-  Serial.print("SSID: ");
+  Serial.println("you're connected to the network");
+  Serial.print("sSID: ");
   Serial.println(WiFi.SSID());
-  Serial.print("Signal strength: ");
+  Serial.print("signal strength: ");
   Serial.println(WiFi.RSSI());
-  Serial.print("IP Address: ");
+  Serial.print("iP Address: ");
   Serial.println(WiFi.localIP());
   Serial.println();
 }
 
 void wifiEnd() {
-  // attempt to disconnect from Wi-Fi network
-  Serial.print("Disconnect from network: ");
+  Serial.print("disconnect from network: ");
   Serial.println(WiFi.SSID());
-  WiFi.disconnect();
+
   WiFi.end();
-  WiFi.lowPowerMode();
 
   status = WL_DISCONNECTED;
-
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-  Serial.print("Signal strength: ");
-  Serial.println(WiFi.RSSI());
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
 }
 
 void setTime() {
-    unsigned long epoch = 0;
+  unsigned long epoch = 0;
 
-    while (epoch == 0) {
-      Serial.println("Get time");
-      epoch = WiFi.getTime();
+  while (epoch == 0) {
+    Serial.println("get time");
+    epoch = WiFi.getTime();
 
-      // wait second before retry
-      delay(1000);
-    }
+    delay(1000);
+  }
 
-    unsigned long epochGMT = epoch + GMT * 60 * 60;
+  unsigned long epochGMT = epoch + GMT * 60 * 60;
+  alarm.setEpoch(epochGMT);
 
-    Serial.print("Set time to: ");
-    Serial.println(epochGMT);
-    alarm.setEpoch(epochGMT);
+  Serial.print("set time to: ");
+  Serial.println(epochGMT);
 }
 
-void writeScreen(String text)  {
+DynamicJsonDocument apiGet() {
+  Serial.println("starting connection to server");
+
+  DynamicJsonDocument doc(4096);
+
+  if (client.connect("api.roots.ee", 443)) {
+    Serial.println("connected to server");
+
+    client.println("GET /elekter HTTP/1.1");
+    client.println("Host: api.roots.ee");
+    client.println("Connection: close");
+    client.println();
+    Serial.println("request sent");
+  }
+
+  while (!client.available()) {
+    ; // wait for API response
+  }
+
+  while (client.available()) {
+    String payload = client.readString();
+    String body = payload.substring(payload.indexOf("[["), payload.indexOf("]]") + 2);
+
+    DeserializationError error = deserializeJson(doc, body);
+
+    if (error) {
+      Serial.print("deserializeJson() failed: ");
+      Serial.println(error.c_str());
+      return doc;
+    }
+  }
+
+
+  if (!client.connected()) {
+    Serial.println();
+    Serial.println("disconnecting from server.");
+    client.stop();
+  }
+
+  return doc;
+}
+
+void writeScreen(DynamicJsonDocument doc)  {
+  String text = "";
   String dateStr = getDateString();
   String timeStr = getTimeString();
 
   display.init();
-  display.setRotation(3);
+  display.setRotation(2);
   display.setTextSize(1);
   display.setFullWindow();
 
   int16_t timePositionX, timePositionY;
   uint16_t timeWidth, timeHeight;
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(&FreeSansBold9pt7b);
   display.getTextBounds(timeStr, 0, 0, &timePositionX, &timePositionY, &timeWidth, &timeHeight);
   uint16_t timeCursorX = display.width() - timeWidth - 3;
   uint16_t timeCursorY = timeHeight;
-
-  int16_t textPositionX, textPositionY;
-  uint16_t textWidth, textHeight;
-  display.setFont(&FreeSans9pt7b);
-  display.getTextBounds(text, 0, 0, &textPositionX, &textPositionY, &textWidth, &textHeight);
-  uint16_t textCursorX = 0;
-  uint16_t textCursorY = (display.height() - textHeight) / 2 + timeHeight;
-
-  if (display.height() - textHeight < timeHeight + 22) {
-    textCursorY = timeHeight + 22;
-  }
 
   display.firstPage();
 
@@ -160,7 +163,7 @@ void writeScreen(String text)  {
     display.fillScreen(GxEPD_WHITE);
     display.setTextColor(GxEPD_BLACK);
 
-    display.setFont(&FreeSansBold12pt7b);
+    display.setFont(&FreeSansBold9pt7b);
     display.setCursor(0, timeCursorY);
     display.print(dateStr);
     display.setCursor(timeCursorX, timeCursorY);
@@ -168,24 +171,60 @@ void writeScreen(String text)  {
 
     display.drawFastHLine(0, timeCursorY + 5, display.width(), GxEPD_BLACK);
 
-    display.setFont(&FreeSans9pt7b);
-    display.setCursor(textCursorX, textCursorY);
-    display.print(text);
+    display.setFont(&FreeMono9pt7b);
+
+    int16_t pricePositionX, pricePositionY;
+    uint16_t priceWidth, priceHeight;
+
+    uint16_t priceCursorY = timeHeight + 22;
+
+    for (int i = 0; i <= 24; i++) {
+      JsonArray row = doc[i];
+
+      int hour = row[3];
+
+      char hourStr[5];
+
+      float price = row[4];
+      int priceRounded = round(price / 10);
+      String priceStr = String(priceRounded);
+
+      sprintf_P(hourStr, PSTR("%02d:00% 9d"), hour, priceRounded);
+
+      display.getTextBounds(priceStr, 0, 0, &pricePositionX, &pricePositionY, &priceWidth, &priceHeight);
+      uint16_t priceCursorX = display.width() - priceWidth - 3;
+
+      display.setCursor(0, priceCursorY);
+      display.print(hourStr);
+
+      // display.setCursor(priceCursorX, priceCursorY);
+      // display.print(priceStr);
+
+      priceCursorY = priceCursorY + 20;
+    }
   } while (display.nextPage());
 
   display.hibernate();
 }
 
 String getDateString() {
-  char result[16];
-  sprintf_P(result, PSTR("%02d.%02d.%4d"), alarm.getDay(), alarm.getMonth(), alarm.getYear() + 2000);
+  char result[5];
+  sprintf_P(result, PSTR("%02d.%02d"), alarm.getDay(), alarm.getMonth());
 
   return result;
 }
 
 String getTimeString() {
-  char result[16];
+  char result[5];
   sprintf_P(result, PSTR("%02d:%02d"), alarm.getHours(), alarm.getMinutes());
 
   return result;
 }
+
+String getPriceString(float price) {
+  String result;
+  result = String(price);
+
+  return result;
+}
+
