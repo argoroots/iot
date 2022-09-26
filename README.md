@@ -1,2 +1,2 @@
-# iot
-Some IOT examples
+# IoT
+Some IoT examples
