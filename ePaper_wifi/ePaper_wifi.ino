@@ -139,8 +139,11 @@ DynamicJsonDocument apiGet() {
 void writeScreen(DynamicJsonDocument doc)  {
   Serial.println("update screen");
 
-  String dateStr = getDateString();
-  String timeStr = getTimeString();
+  char dateStr[5];
+  sprintf_P(dateStr, PSTR("%02d.%02d"), alarm.getDay(), alarm.getMonth());
+
+  char timeStr[5];
+  sprintf_P(timeStr, PSTR("%02d:%02d"), alarm.getHours(), alarm.getMinutes());
 
   display.init();
   display.setRotation(2);
@@ -154,8 +157,9 @@ void writeScreen(DynamicJsonDocument doc)  {
   uint16_t timeCursorX = display.width() - timeWidth - 3;
   uint16_t timeCursorY = timeHeight;
 
-  display.firstPage();
+  uint16_t priceCursorY = timeHeight + 21;
 
+  display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
     display.setTextColor(GxEPD_BLACK);
@@ -170,19 +174,15 @@ void writeScreen(DynamicJsonDocument doc)  {
 
     display.setFont(&FreeMono9pt7b);
 
-    int16_t pricePositionX, pricePositionY;
-    uint16_t priceWidth, priceHeight;
-
-    uint16_t priceCursorY = timeHeight + 22;
-
     for (int i = 0; i <= 24; i++) {
       JsonArray row = doc[i];
 
       int hour = row[3];
       float price = row[4];
-      int priceRounded = round(price / 10);
+      int priceRounded = round(price * 100);
 
-      String hourStr = getPriceString(hour, priceRounded);
+      char hourStr[14];
+      sprintf_P(hourStr, PSTR("%02d:00% 9d"), hour, priceRounded);
 
       display.setCursor(0, priceCursorY);
       display.print(hourStr);
@@ -192,25 +192,4 @@ void writeScreen(DynamicJsonDocument doc)  {
   } while (display.nextPage());
 
   display.hibernate();
-}
-
-String getDateString() {
-  char result[5];
-  sprintf_P(result, PSTR("%02d.%02d"), alarm.getDay(), alarm.getMonth());
-
-  return result;
-}
-
-String getTimeString() {
-  char result[5];
-  sprintf_P(result, PSTR("%02d:%02d"), alarm.getHours(), alarm.getMinutes());
-
-  return result;
-}
-
-String getPriceString(int hour, int price) {
-  char result[14];
-  sprintf_P(result, PSTR("%02d:00%.9d"), hour, price);
-
-  return result;
 }
